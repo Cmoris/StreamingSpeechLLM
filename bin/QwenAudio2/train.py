@@ -1,6 +1,8 @@
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional, Literal
 from pathlib import Path
+from types import MethodType
+
 import torch
 import transformers
 from transformers import (
@@ -12,9 +14,10 @@ from transformers import (
     Qwen2AudioForConditionalGeneration
 )
 
-from constants import DEFAULT_SAMPLE_RATE, DEFAULT_CHUNK_SECS, DEFAULT_CONTEXT_LENGTH, TE_TOKEN, TS_TOKEN, SPEAKER_TOKENS, BC_TOKEN, PAUSE_TOKEN, SILENCE_TOKEN, QUERY
-from data import DualChannelStreamingConvDataset, DualChannelStreamingASRDataset, DualChannelStreamingASRVAPDataset, SingleChannelStreamingASRDataset
+from constants import DEFAULT_SAMPLE_RATE, DEFAULT_CHUNK_SECS, TE_TOKEN, TS_TOKEN, SPEAKER_TOKENS, BC_TOKEN, PAUSE_TOKEN, SILENCE_TOKEN, QUERY
+from data import DualChannelStreamingConvDataset, DualChannelStreamingASRDataset, SingleChannelStreamingASRDataset
 from nonstreaming_data import SingleChannelASRDataset, DualChannelASRDataset, DualChannelConvDataset
+from inference import add_channel_embedding, add_dual_channel_embedding_to_inputs, build_dual_audio_position_ids_from_input_ids, patched_qwen2audio_forward
 
 logger = logging.get_logger(__name__)
 local_rank = None
@@ -42,7 +45,6 @@ class DataArguments:
     audio_root_b: str = field(default="")
     chunk_secs: float = field(default=DEFAULT_CHUNK_SECS)
     sample_rate: int = field(default=DEFAULT_SAMPLE_RATE)
-    context_length: int = field(default=DEFAULT_CONTEXT_LENGTH)
     query: str = field(default=QUERY)
     data_version:  Literal[
         "dual_channel_asr",
@@ -88,6 +90,25 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_bias: str = field(default="none")
     target_modules: str = field(default="q_proj,k_proj,v_proj,o_proj")  # 修正默认值格式
 
+def patch_qwen2audio_dual_channel(model):
+    add_channel_embedding(model, num_channels=2)
+
+    model.add_dual_channel_embedding_to_inputs = MethodType(
+        add_dual_channel_embedding_to_inputs,
+        model,
+    )
+
+    model.build_dual_audio_position_ids = MethodType(
+        build_dual_audio_position_ids_from_input_ids,
+        model,
+    )
+
+    model.forward = MethodType(
+        patched_qwen2audio_forward,
+        model,
+    )
+
+    return model
     
 def train():
     global local_rank
@@ -165,8 +186,6 @@ def train():
         rank0_print("Adding LoRA adapters...")
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
-        
-    # 冻结指定模块
 
     if model_args.freeze_modules is not None:
         if training_args.lora_enable:
@@ -219,7 +238,6 @@ def train():
             audio_root_b=data_args.audio_root_b,
             chunk_secs=data_args.chunk_secs,
             sample_rate=data_args.sample_rate,
-            query=data_args.query,
         )
     elif data_args.data_version == "dual_channel_streaming_conv":
         dataset = DualChannelStreamingConvDataset(
@@ -229,14 +247,13 @@ def train():
             audio_root_b=data_args.audio_root_b,
             chunk_secs=data_args.chunk_secs,
             sample_rate=data_args.sample_rate,
-            query=data_args.query,
+            query=QUERY,
         )
     elif data_args.data_version == "single_channel_streaming_asr":
         dataset = SingleChannelStreamingASRDataset(
             annotation_paths=annotation_paths,
             processor=processor,
             sample_rate=data_args.sample_rate,
-            query=data_args.query,
         )
     elif data_args.data_version == "dual_channel_conv":
         dataset = DualChannelConvDataset(
@@ -244,9 +261,8 @@ def train():
             processor=processor,
             audio_root_a=data_args.audio_root_a,
             audio_root_b=data_args.audio_root_b,
-            chunk_secs=data_args.chunk_secs,
             sample_rate=data_args.sample_rate,
-            query=data_args.query,
+            query=QUERY,
         )
         
     elif data_args.data_version == "dual_channel_asr":
@@ -257,7 +273,6 @@ def train():
             audio_root_b=data_args.audio_root_b,
             chunk_secs=data_args.chunk_secs,
             sample_rate=data_args.sample_rate,
-            query=data_args.query,
         )
         
     elif data_args.data_version == "single_channel_asr":

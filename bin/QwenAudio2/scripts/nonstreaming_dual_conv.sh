@@ -6,26 +6,25 @@
 # ================================================================
 
 # 设置基础参数
-export CUDA_VISIBLE_DEVICES=4,5,6,7  # 使用的GPU编号
-NUM_GPUS=4  # GPU数量
+export CUDA_VISIBLE_DEVICES=0,1  # 使用的GPU编号
+NUM_GPUS=2  # GPU数量
 
 # 模型和数据路径
 MODEL_PATH="Qwen/Qwen2-Audio-7B-Instruct"
-PRETRAIN_DATA_PATH="/n/work6/yizhang/Moris/zoom2025/pretrain_labels/l3_conv_train_with_backchannel"
-PRETRAIN_AUDIO_FOLDER_A="/n/work1/muyun/Dataset/zoom2025/audios/A_all"
-PRETRAIN_AUDIO_FOLDER_B="/n/work1/muyun/Dataset/zoom2025/audios/B_all"
-CONTEXT_LENGTH=1
+PRETRAIN_DATA_PATH="/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels/l5_conv_train_with_backchannel"
+PRETRAIN_AUDIO_FOLDER_A="/ctd/Works/m-wu/Datasets/zoom2025/audios/A_gd"
+PRETRAIN_AUDIO_FOLDER_B="/ctd/Works/m-wu/Datasets/zoom2025/audios/B_gd"
 
-DATA_VERSION=3
+DATA_VERSION="dual_channel_conv"
 
 # 训练超参数
 BATCH_SIZE=1  # 每张卡的batch size
-GRAD_ACCUM=32  # 梯度累积步数
+GRAD_ACCUM=16  # 梯度累积步数
 LEARNING_RATE=2e-5
 NUM_EPOCHS=2
 
 # LoRA参数
-LORA_R=16
+LORA_R=64
 LORA_ALPHA=32
 LORA_DROPOUT=0.05
 TARGET_MODULES="q_proj,k_proj,v_proj,o_proj"
@@ -34,14 +33,14 @@ TARGET_MODULES="q_proj,k_proj,v_proj,o_proj"
 SAVE_STEPS=500
 LOGGING_STEPS=10
 SAVE_TOTAL_LIMIT=5
-OUTPUT_DIR=/n/work6/yizhang/Moris/Models/StreamingSpeechLLM/ASR_CONV_pre/qwen2audio_pretrainl3_bc_lora16_v2
+OUTPUT_DIR=/ctd/Works/m-wu/Models/StreamingSpeechLLM/ASR_CONV_finetune/qwen2audio_l5_lora16
 
 
 torchrun \
     --nproc_per_node=$NUM_GPUS \
     --master_port=29502 \
     train.py \
-    --deepspeed /home/yizhang/Moris/StreamingSpeechLLM/bin/baseline/scripts/zero2.json \
+    --deepspeed ./scripts/zero2.json \
     --pretrained_model_name_or_path $MODEL_PATH \
     --output_dir $OUTPUT_DIR \
     --data_version $DATA_VERSION \
@@ -60,7 +59,7 @@ torchrun \
     --learning_rate $LEARNING_RATE \
     --lr_scheduler_type "cosine" \
     --freeze_modules audio_tower \
-    --warmup_step 1000 \
+    --warmup_step 100 \
     --weight_decay 0 \
     --bits 4 \
     --bf16 True \

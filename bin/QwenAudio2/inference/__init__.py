@@ -1,0 +1,3 @@
+from .channel_emb import add_channel_embedding, add_dual_channel_embedding_to_inputs
+from .pos_emb import build_dual_audio_position_ids_from_input_ids
+from .patch_model import patched_qwen2audio_forward

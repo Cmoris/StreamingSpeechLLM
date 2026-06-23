@@ -1,4 +1,3 @@
-from .asr_vap_dataset import DualChannelStreamingASRVAPDataset
 from .asr_dataset import SingleChannelStreamingASRDataset
 from .conv_model_dataset import DualChannelStreamingConvDataset
 from. dual_asr_dataset import DualChannelStreamingASRDataset

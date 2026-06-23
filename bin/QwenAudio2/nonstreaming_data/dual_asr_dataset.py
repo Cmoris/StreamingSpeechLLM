@@ -9,8 +9,7 @@ from transformers import AutoProcessor, AutoTokenizer, AutoFeatureExtractor, log
 
 import sys
 sys.path.append("../")
-from constants import (TS_TOKEN, TE_TOKEN, BC_TOKEN, PAUSE_TOKEN, SILENCE_TOKEN,
-                       SPEAKER_TOKENS, STREAMING_CONT, DEFAULT_CHUNK_SECS, DEFAULT_SAMPLE_RATE, DEFAULT_CONTEXT_LENGTH)
+from constants import DEFAULT_SAMPLE_RATE
 from data_utils import read_audio, safe_chunk, make_dummy_audio, pad_audio_to_min_len
 
 logger = logging.get_logger(__name__)
@@ -117,7 +116,6 @@ class DualChannelASRDataset(Dataset):
         processor: Optional[AutoProcessor],
         audio_root_a: str,
         audio_root_b: str,
-        context_length: int = DEFAULT_CONTEXT_LENGTH,
         sample_rate:  int   = DEFAULT_SAMPLE_RATE,
         query:        Optional[str] = None,
     ):

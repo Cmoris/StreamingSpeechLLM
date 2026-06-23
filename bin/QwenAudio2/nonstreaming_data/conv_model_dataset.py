@@ -10,7 +10,7 @@ from transformers import AutoProcessor, AutoTokenizer, AutoFeatureExtractor, log
 import sys
 sys.path.append("../")
 from constants import (TS_TOKEN, TE_TOKEN, BC_TOKEN, PAUSE_TOKEN, SILENCE_TOKEN,
-                       SPEAKER_TOKENS, STREAMING_CONT, DEFAULT_CHUNK_SECS, DEFAULT_SAMPLE_RATE, DEFAULT_CONTEXT_LENGTH)
+                       SPEAKER_TOKENS, STREAMING_CONT, DEFAULT_CHUNK_SECS, DEFAULT_SAMPLE_RATE, QUERY)
 from data_utils import read_audio, safe_chunk, make_dummy_audio, pad_audio_to_min_len
 
 logger = logging.get_logger(__name__)
@@ -27,7 +27,7 @@ def build_conversation(
     MIN_AUDIO_SECS = 1.0
     min_samples = int(MIN_AUDIO_SECS * sr)
     
-    conversation = []
+    conversation = [{"role": "system", "content": query}]
     audio_inputs = []
 
     for chunk_info in audio_list:
@@ -84,9 +84,6 @@ def build_conversation(
         assistant_text = "".join(cur_uttrs)
 
         user_content = []
-        
-        if query:
-            user_content.append({"type": "text", "text": query})
 
         user_content.extend([
             {"type": "text", "text": "Speaker A"},
@@ -97,9 +94,6 @@ def build_conversation(
 
         audio_inputs.append(chunk_a)
         audio_inputs.append(chunk_b)
-
-        if query:
-            user_content.append({"type": "text", "text": query})
 
         conversation.append({"role": "user", "content": user_content})
         conversation.append({"role": "assistant", "content": assistant_text})
@@ -129,7 +123,6 @@ class DualChannelConvDataset(Dataset):
         processor: Optional[AutoProcessor],
         audio_root_a: str,
         audio_root_b: str,
-        context_length: int = DEFAULT_CONTEXT_LENGTH,
         sample_rate:  int   = DEFAULT_SAMPLE_RATE,
         query:        Optional[str] = None,
     ):
@@ -138,7 +131,6 @@ class DualChannelConvDataset(Dataset):
         self.processor      = processor
         self.audio_root_a   = Path(audio_root_a)
         self.audio_root_b   = Path(audio_root_b)
-        self.context_length = context_length
         self.sr             = sample_rate
         self.query          = query or self.QUERY
         # ── special token ids for label masking  ──────────────
@@ -186,9 +178,9 @@ class DualChannelConvDataset(Dataset):
         audio_list = []
 
         utterances = sorted(utterances, key=lambda x: (x["start"], x["end"]))
-        breakpoint()
-        for i in range(len(utterances)-3):
-            uttrs = utterances[i:i+3]
+
+        for i in range(len(utterances)):
+            uttrs = [utterances[i]]
             
             speakers = set([uttr["speaker"] for uttr in uttrs])
             t_A_time = [[uttr["start"], uttr["end"]]  for uttr in uttrs if uttr["speaker"] == 'A']
@@ -224,7 +216,7 @@ class DualChannelConvDataset(Dataset):
                 }
             
             audio_list.append(audio_dict)
-
+        
         return audio_list
 
     # ── Core item builder ────────────────────────────────────────────────────
@@ -232,14 +224,12 @@ class DualChannelConvDataset(Dataset):
     def getitem(self, index: int) -> dict:
         record   = self.load_record(index)
         
-        utterances = record[0]['content'][0]["utterances"]
-        
         audio_list = self._resolve_audio(record[0])
         
         # ── build streaming multi-turn conversation ───────────────────────────
         conversation, audio_inputs = build_conversation(
             audio_list, self.query, sr=self.sr,
-        )                    
+        )                 
         # ── tokenize ─────────────────────────────────────────────────────────
         
         text = self.processor.apply_chat_template(
@@ -270,7 +260,6 @@ class DualChannelConvDataset(Dataset):
                     input_ids[si, s_idx + 3 : e_idx + 1]
     
         inputs["labels"] = labels
-        inputs["text"] = text
 
         return inputs
 
@@ -324,16 +313,10 @@ def _read_last_line(path: str, buf: int = 4096) -> str:
     return last.decode("utf-8")
 
 
-def record_display(record: dict):
-    print("=== Utterances ===")
-    for u in record[0]["content"][0]["utterances"]:
-        flag = " ← TURN-TAKING" if u["is_turn_taking"] else ""
-        print(f"  [{u['speaker']}] {u['start']:.2f}-{u['end']:.2f}  {u['text']}{flag}")
-
-    print("\n=== Stream (first 20 events) ===")
-    for ev in record[1]["content"][0]["text_stream"]:
-        print(f"  {ev['start']:.3f} {ev['end']:.3f}  [{ev['speaker']}]  {ev['token']:6s}  ({ev['kind']})")
-    print("\n=== Training sequence ===")
+def debug_wav(audio_list: list):
+    import soundfile as sf
+    for i in range(len(audio_list)):
+        sf.write(f"./debug_{i}.wav", audio_list[i], samplerate=DEFAULT_SAMPLE_RATE) 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Smoke-test
@@ -366,7 +349,7 @@ if __name__ == "__main__":
         processor=proc,
         audio_root_a="/ctd/Works/m-wu/Datasets/zoom2025/audios/A_gd",
         audio_root_b="/ctd/Works/m-wu/Datasets/zoom2025/audios/B_gd",
-        context_length=2,
+        query=QUERY
     )
     print(f"Dataset length: {len(ds)}")
 

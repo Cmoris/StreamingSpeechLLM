@@ -15,8 +15,6 @@ STREAMING_CONT = " ..."   # suffix meaning "transcript not yet complete"
 DEFAULT_CHUNK_SECS   = 2    # seconds of audio per streaming step
 DEFAULT_SAMPLE_RATE  = 16_000
 
-DEFAULT_CONTEXT_LENGTH = 1
-
 QUERY = """You are a streaming dialogue transcriber.
 
         Transcribe the speech from Speaker A and Speaker B.
