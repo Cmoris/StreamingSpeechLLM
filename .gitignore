@@ -1,0 +1,6 @@
+.vscode
+*.jsonl
+*.json
+*.log
+__pycache__
+try.py
