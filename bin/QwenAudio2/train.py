@@ -154,6 +154,9 @@ def train():
         dtype=compute_dtype,
         **bnb_model_from_pretrained_args
     )
+
+    # Patch Qwen2Audio to Dual Channel Forward
+    patch_qwen2audio_dual_channel(model)
     
     # 准备量化训练
     if training_args.bits in [4, 8]:
@@ -209,14 +212,12 @@ def train():
                 output.requires_grad_(True)
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
     
-    # 加载处理器
     rank0_print("Loading processor...")
     processor = AutoProcessor.from_pretrained(
         model_args.pretrained_model_name_or_path, 
         padding_side='right'
     )
     
-    # 设置tokenizer的pad_token
     if processor.tokenizer.pad_token is None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
         
@@ -224,9 +225,7 @@ def train():
 
     processor.tokenizer.add_tokens([TE_TOKEN, TS_TOKEN, BC_TOKEN, PAUSE_TOKEN, SILENCE_TOKEN, SPEAKER_TOKENS['A'][0], SPEAKER_TOKENS['A'][1], SPEAKER_TOKENS['B'][0], SPEAKER_TOKENS['B'][1]], special_tokens=False)
     
-    # print("tokenizer:", len(processor.tokenizer.get_vocab()))
-    # print("embedding:", model.get_input_embeddings().weight.shape[0])
-    # 准备数据集
+
     rank0_print("Preparing dataset...")
     annotation_paths = [str(x) for x in Path(data_args.annotation_dir).glob("*.jsonl")]
     
@@ -286,7 +285,6 @@ def train():
     else:
         raise ValueError(f"Unsupported data_version: {data_args.data_version}")
     
-    # 创建Trainer并开始训练
     rank0_print("Starting training...")
     if hasattr(model, "print_trainable_parameters"):
         model.print_trainable_parameters()
@@ -297,7 +295,6 @@ def train():
         data_collator=dataset.data_collator,
     )
     
-    # 开始训练
     checkpoint_dir = Path(training_args.output_dir)
     if list(checkpoint_dir.glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)

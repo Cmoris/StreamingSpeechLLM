@@ -132,8 +132,8 @@ def patched_qwen2audio_forward(
 
     else:
         input_ids_for_hook = input_ids
-
-    # 1. 先加 channel embedding
+    breakpoint()
+    # 1.channel embedding
     if hasattr(self, "add_dual_channel_embedding_to_inputs"):
         inputs_embeds = self.add_dual_channel_embedding_to_inputs(
             inputs_embeds=inputs_embeds,
@@ -144,20 +144,8 @@ def patched_qwen2audio_forward(
             past_key_values=past_key_values,
             cache_position=cache_position,
         )
-
-    # 2. 再改 decoder attention mask
-    if hasattr(self, "build_decoder_attention_mask"):
-        attention_mask = self.build_decoder_attention_mask(
-            attention_mask=attention_mask,
-            inputs_embeds=inputs_embeds,
-            input_ids=input_ids_for_hook,
-            labels=labels,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            cache_position=cache_position,
-        )
-
-    # 3. 最后改 position ids
+    breakpoint()
+    # 2.position ids
     if hasattr(self, "build_dual_audio_position_ids"):
         position_ids = self.build_dual_audio_position_ids(
             input_ids=input_ids_for_hook,
@@ -168,7 +156,7 @@ def patched_qwen2audio_forward(
             past_key_values=past_key_values,
             cache_position=cache_position,
         )
-
+    breakpoint()
     outputs = self.language_model(
         attention_mask=attention_mask,
         position_ids=position_ids,
