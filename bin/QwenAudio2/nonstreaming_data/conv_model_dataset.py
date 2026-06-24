@@ -77,6 +77,8 @@ def build_conversation(
                 suffix += PAUSE_TOKEN
             if u.get("is_silence", False):
                 suffix += SILENCE_TOKEN
+            if u.get("is_turn_end", False):
+                suffix += TE_TOKEN
 
             spk_tag = "speaker_A" if speaker == "A" else "speaker_B"
             cur_uttrs.append(f"<{spk_tag}>{text}</{spk_tag}>{suffix}")
