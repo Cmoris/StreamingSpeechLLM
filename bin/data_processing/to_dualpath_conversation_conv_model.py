@@ -216,10 +216,10 @@ def build_dataset_record(
 def read_jsonl(jsonl_file: str, length: int):
     conversations = []
     with open(jsonl_file, "r") as f:
-        lines = f.readlines()
-        for i in range(length, len(lines)-1, length):
+        lines = f.readlines()[:-1]
+        for i in range(0, len(lines)-length+1, length):
 
-            conversations.append(lines[i-length:i])
+            conversations.append(lines[i:i+length])
             
     return conversations
 
@@ -296,7 +296,7 @@ def generate_test_dataset_for_finetune(length: int=2):
     generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length)
 
 if __name__ == "__main__":
-    length = 10
+    length = 4
     # generate_test_dataset_for_pretrain(length)
     # generate_train_dataset_for_pretrain(length)
     generate_train_dataset_for_finetune(length)

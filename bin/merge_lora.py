@@ -6,8 +6,8 @@ from peft import PeftModel
 
 # ===== 路径配置 =====
 base_model_path = "Qwen/Qwen2-Audio-7B-Instruct"
-lora_path = "/n/work6/yizhang/Moris/Models/StreamingSpeechLLM/ASR/qwen2audio_finetunel2_chunk1s_lora16/checkpoint-3000"
-save_path = "/n/work6/yizhang/Moris/Models/StreamingSpeechLLM/ASR/qwen2audio_finetunel2_chunk1s_lora16/model"
+lora_path = "/ctd/Works/m-wu/Models/StreamingSpeechLLM/ASR_CONV_finetune/qwen2audio_l5_lora16"
+save_path = "/ctd/Works/m-wu/Models/StreamingSpeechLLM/ASR_CONV_finetune/qwen2audio_l5_lora16/model"
 
 Path(save_path).mkdir(parents=True, exist_ok=True)
 

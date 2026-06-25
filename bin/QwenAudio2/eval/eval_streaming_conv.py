@@ -1,10 +1,11 @@
 import json
-import sys
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import torch
+import torch.distributed as dist
 from peft import PeftModel
 from tqdm import tqdm
 from transformers import (
@@ -12,10 +13,6 @@ from transformers import (
     HfArgumentParser,
     Qwen2AudioForConditionalGeneration,
 )
-
-QWEN_AUDIO_DIR = Path(__file__).resolve().parents[1]
-if str(QWEN_AUDIO_DIR) not in sys.path:
-    sys.path.insert(0, str(QWEN_AUDIO_DIR))
 
 from constants import (  # noqa: E402
     BC_TOKEN,
@@ -28,11 +25,11 @@ from constants import (  # noqa: E402
     TE_TOKEN,
     TS_TOKEN,
 )
-from data.conv_model_dataset import (  # noqa: E402
+from data.conv_model_dataset import (  
     DualChannelStreamingConvDataset,
     build_streaming_conversation,
 )
-from infer_utils import speaker_cer, special_token_f1_sequence  # noqa: E402
+from infer_utils import speaker_cer, special_token_f1_sequence  
 
 
 @dataclass
@@ -54,6 +51,32 @@ class ModelArguments:
     lora_path: Optional[str] = field(default=None)
     device: str = field(default="cuda:0")
     torch_dtype: str = field(default="float16")
+
+
+def init_distributed(model_args: ModelArguments):
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+
+    if world_size > 1:
+        backend = "nccl" if torch.cuda.is_available() else "gloo"
+        dist.init_process_group(backend=backend)
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+            device = torch.device(f"cuda:{local_rank}")
+        else:
+            device = torch.device("cpu")
+    else:
+        device = torch.device(model_args.device)
+
+    return rank, world_size, local_rank, device
+
+
+def rank_output_path(output_path: str, rank: int, world_size: int) -> Path:
+    path = Path(output_path)
+    if world_size <= 1:
+        return path
+    return path.with_name(f"{path.stem}_rank{rank}{path.suffix}")
 
 
 def move_to_device(inputs, device):
@@ -84,7 +107,7 @@ def evaluate_prediction(pred: str, ref: str) -> dict:
     }
 
 
-def add_streaming_tokens(processor, model) -> None:
+def add_streaming_tokens(processor) -> None:
     tokens = [
         TE_TOKEN,
         TS_TOKEN,
@@ -96,9 +119,8 @@ def add_streaming_tokens(processor, model) -> None:
         SPEAKER_TOKENS["B"][0],
         SPEAKER_TOKENS["B"][1],
     ]
-    added = processor.tokenizer.add_tokens(tokens, special_tokens=False)
-    if added:
-        model.resize_token_embeddings(len(processor.tokenizer))
+    
+    processor.tokenizer.add_tokens(tokens, special_tokens=False)
 
 
 def build_chunk_inputs(processor, user_msg, chunk_pair, sample_rate: int, device):
@@ -262,7 +284,7 @@ def dtype_from_name(name: str):
 
 
 def run_generate_eval(data_args: DataArguments, model_args: ModelArguments):
-    device = torch.device(model_args.device)
+    rank, world_size, _, device = init_distributed(model_args)
     processor = AutoProcessor.from_pretrained(
         model_args.pretrained_model_name_or_path,
         trust_remote_code=True,
@@ -275,7 +297,7 @@ def run_generate_eval(data_args: DataArguments, model_args: ModelArguments):
         trust_remote_code=True,
     ).to(device)
 
-    add_streaming_tokens(processor, base_model)
+    add_streaming_tokens(processor)
 
     if model_args.lora_path:
         model = PeftModel.from_pretrained(base_model, model_args.lora_path)
@@ -295,15 +317,17 @@ def run_generate_eval(data_args: DataArguments, model_args: ModelArguments):
         eval=True,
     )
 
-    output_path = Path(data_args.output_path)
+    output_path = rank_output_path(data_args.output_path, rank, world_size)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     n_samples = len(dataset)
     if data_args.max_samples is not None:
         n_samples = min(n_samples, data_args.max_samples)
 
+    indices = list(range(rank, n_samples, world_size))
+
     with output_path.open("w", encoding="utf-8") as fout:
-        for sample_idx in tqdm(range(n_samples)):
+        for sample_idx in tqdm(indices, disable=rank != 0):
             items = build_generate_items(dataset, sample_idx)
             past_key_values = None
             rounds = []
@@ -335,7 +359,6 @@ def run_generate_eval(data_args: DataArguments, model_args: ModelArguments):
                         "ref": ref_text,
                         "pred": pred_text,
                         "metrics": evaluate_prediction(pred_text, ref_text),
-                        "generated_ids": generated_ids,
                     }
                 )
 
@@ -345,6 +368,7 @@ def run_generate_eval(data_args: DataArguments, model_args: ModelArguments):
                 json.dumps(
                     {
                         "sample_idx": sample_idx,
+                        "rank": rank,
                         "ref": sample_ref,
                         "pred": sample_pred,
                         "metrics": evaluate_prediction(sample_pred, sample_ref),
@@ -355,6 +379,10 @@ def run_generate_eval(data_args: DataArguments, model_args: ModelArguments):
                 + "\n"
             )
             fout.flush()
+
+    if world_size > 1:
+        dist.barrier()
+        dist.destroy_process_group()
 
     print(f"Saved to {output_path}")
 

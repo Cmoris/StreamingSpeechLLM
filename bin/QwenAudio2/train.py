@@ -90,7 +90,8 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_bias: str = field(default="none")
     target_modules: str = field(default="q_proj,k_proj,v_proj,o_proj")  # 修正默认值格式
 
-def patch_qwen2audio_dual_channel(model):
+def patch_qwen2audio_dual_channel(model, model_args):
+    if 
     add_channel_embedding(model, num_channels=2)
 
     model.add_dual_channel_embedding_to_inputs = MethodType(
@@ -156,7 +157,7 @@ def train():
     )
 
     # Patch Qwen2Audio to Dual Channel Forward
-    patch_qwen2audio_dual_channel(model)
+    patch_qwen2audio_dual_channel(model, model_args)
     
     # 准备量化训练
     if training_args.bits in [4, 8]:

@@ -230,7 +230,8 @@ class DualChannelStreamingConvDataset(Dataset):
         chunk_secs:   float = DEFAULT_CHUNK_SECS,
         sample_rate:  int   = DEFAULT_SAMPLE_RATE,
         query:        Optional[str] = None,
-        eval:         bool = False
+        eval:         bool = False,
+        debug_output_audio_text: bool = False,
     ):
         super().__init__()
 
@@ -241,6 +242,7 @@ class DualChannelStreamingConvDataset(Dataset):
         self.sr             = sample_rate
         self.query          = query or self.QUERY
         self.eval           = eval
+        self.debug_output_audio_text = debug_output_audio_text
         # ── special token ids for label masking  ──────────────
         (
             self.im_start_id,
@@ -310,6 +312,25 @@ class DualChannelStreamingConvDataset(Dataset):
             }
         return audio_dict
 
+    def _add_debug_audio_targets(
+        self,
+        inputs: dict,
+        conversation: list[dict],
+        chunks_list: list[tuple[torch.Tensor, torch.Tensor]],
+    ) -> dict:
+        inputs["debug_audio_a"] = []
+        inputs["debug_audio_b"] = []
+        inputs["debug_target_texts"] = []
+
+        for chunk_idx, (chunk_a, chunk_b) in enumerate(chunks_list):
+            inputs["debug_audio_a"].append(chunk_a)
+            inputs["debug_audio_b"].append(chunk_b)
+            inputs["debug_target_texts"].append(
+                conversation[2 * chunk_idx + 1]["content"][0]["text"]
+            )
+
+        return inputs
+
     # ── Core item builder ────────────────────────────────────────────────────
 
     def getitem(self, index: int) -> dict:
@@ -373,6 +394,13 @@ class DualChannelStreamingConvDataset(Dataset):
                     input_ids[si, s_idx + 3 : e_idx + 1]
     
         inputs["labels"] = labels
+
+        if self.debug_output_audio_text:
+            inputs = self._add_debug_audio_targets(
+                inputs=inputs,
+                conversation=conversation,
+                chunks_list=chunks_list,
+            )
         
         return inputs
 
@@ -447,6 +475,7 @@ def record_display(record: dict):
         print(f"  {ev['start']:.3f} {ev['end']:.3f}  [{ev['speaker']}]  {ev['token']:6s}  ({ev['kind']})")
     print("\n=== Training sequence ===")
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Smoke-test
 # ─────────────────────────────────────────────────────────────────────────────
@@ -466,7 +495,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(message)s"
     )
     
-    dir = "/n/work6/yizhang/Moris/zoom2025/pretrain_labels/l8_conv_train_with_backchannel"
+    dir = "/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels/l3_conv_test_with_backchannel"
 
     from transformers import Qwen2AudioProcessor
     proc = Qwen2AudioProcessor.from_pretrained(
@@ -476,10 +505,11 @@ if __name__ == "__main__":
     ds = DualChannelStreamingConvDataset(
         annotation_paths=[str(path) for path in Path(dir).glob("*.jsonl")],
         processor=proc,
-        audio_root_a="/n/work6/yizhang/Moris/zoom2025/audios/A_all",
-        audio_root_b="/n/work6/yizhang/Moris/zoom2025/audios/B_all",
+        audio_root_a="/ctd/Works/m-wu/Datasets/zoom2025/audios/A_gd",
+        audio_root_b="/ctd/Works/m-wu/Datasets/zoom2025/audios/B_gd",
         chunk_secs=DEFAULT_CHUNK_SECS,
-        query=QUERY
+        query=QUERY,
+        debug_output_audio_text=True
     )
     print(f"Dataset length: {len(ds)}")
 
