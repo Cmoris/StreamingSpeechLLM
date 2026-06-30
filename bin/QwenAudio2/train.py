@@ -68,6 +68,8 @@ class DataArguments:
 class ModelArguments:
     pretrained_model_name_or_path: str = field(default='Qwen/Qwen2-Audio-7B-Instruct')
     freeze_modules: Optional[List[str]] = field(default=None)  
+    use_pos_emb: bool = field(default=False)
+    use_channel_emb: bool = field(default=False)
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
@@ -91,23 +93,23 @@ class TrainingArguments(transformers.TrainingArguments):
     target_modules: str = field(default="q_proj,k_proj,v_proj,o_proj")  # 修正默认值格式
 
 def patch_qwen2audio_dual_channel(model, model_args):
-    if 
-    add_channel_embedding(model, num_channels=2)
+    if model_args.use_channel_emb:
+        add_channel_embedding(model, num_channels=2)
 
-    model.add_dual_channel_embedding_to_inputs = MethodType(
-        add_dual_channel_embedding_to_inputs,
-        model,
-    )
-
-    model.build_dual_audio_position_ids = MethodType(
-        build_dual_audio_position_ids_from_input_ids,
-        model,
-    )
-
-    model.forward = MethodType(
-        patched_qwen2audio_forward,
-        model,
-    )
+        model.add_dual_channel_embedding_to_inputs = MethodType(
+            add_dual_channel_embedding_to_inputs,
+            model,
+        )
+    if model_args.use_pos_emb:
+        model.build_dual_audio_position_ids = MethodType(
+            build_dual_audio_position_ids_from_input_ids,
+            model,
+        )
+    if model_args.use_pos_emb or model_args.use_channel_emb:
+        model.forward = MethodType(
+            patched_qwen2audio_forward,
+            model,
+        )
 
     return model
     

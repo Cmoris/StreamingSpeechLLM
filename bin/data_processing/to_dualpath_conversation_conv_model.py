@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -213,11 +214,12 @@ def build_dataset_record(
     return conversation
 
 
-def read_jsonl(jsonl_file: str, length: int):
+def read_jsonl(jsonl_file: str, length: int, overlap: bool=False):
     conversations = []
     with open(jsonl_file, "r") as f:
         lines = f.readlines()[:-1]
-        for i in range(0, len(lines)-length+1, length):
+        step = 1 if overlap else length
+        for i in range(0, len(lines)-length+1, step):
 
             conversations.append(lines[i:i+length])
             
@@ -237,13 +239,13 @@ def save_conversations(conversations:list, output_path):
     print(f"Saved to: {output_path}")
 
 
-def generate_dataset(jsonl_dir:str, output_dir:str, length:int):
+def generate_dataset(jsonl_dir:str, output_dir:str, length:int, overlap: bool=False):
     output = Path(output_dir)
     output.mkdir(exist_ok=True, parents=True)
     jsonl_files = [x for x in Path(jsonl_dir).glob("*.jsonl")]
     
     for jsonl_file in jsonl_files:
-        conversations = read_jsonl(str(jsonl_file), length)
+        conversations = read_jsonl(str(jsonl_file), length, overlap)
         conversation_id = jsonl_file.stem
         results = []
         for conv in conversations:
@@ -266,38 +268,71 @@ def record_display(record: dict):
         print(f"  {ev['start']:.3f} {ev['end']:.3f}  [{ev['speaker']}]  {ev['token']:6s}  ({ev['kind']})")
 
 
-def generate_train_dataset_for_pretrain(length: int=2):
+def generate_train_dataset_for_pretrain(length: int=2, overlap: bool=False):
     split = "train_with_backchannel"
     jsonl_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/pretrain_labels/{split}"
-    output_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/pretrain_labels/l{length}_conv_{split}"
+    overlap_suffix = "_overlap" if overlap else ""
+    output_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/pretrain_labels/l{length}_conv_{split}{overlap_suffix}"
     Path(output_dir).mkdir(exist_ok=True, parents=True)
-    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length)
+    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length, overlap=overlap)
         
             
-def generate_test_dataset_for_pretrain(length: int=2):
+def generate_test_dataset_for_pretrain(length: int=2, overlap: bool=False):
     split = "test_with_backchannel"
     jsonl_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/pretrain_labels/{split}"
-    output_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/pretrain_labels/l{length}_conv_{split}"
+    overlap_suffix = "_overlap" if overlap else ""
+    output_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/pretrain_labels/l{length}_conv_{split}{overlap_suffix}"
     Path(output_dir).mkdir(exist_ok=True, parents=True)
-    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length)
+    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length, overlap=overlap)
     
-def generate_train_dataset_for_finetune(length: int=2):
+def generate_train_dataset_for_finetune(
+    length: int=2,
+    output_root: str=None,
+    overlap: bool=False,
+):
     split = "train_with_backchannel"
     jsonl_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels/{split}"
-    output_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels/l{length}_conv_{split}"
+    output_root = output_root or "/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels"
+    overlap_suffix = "_overlap" if overlap else ""
+    output_dir = Path(output_root) / f"l{length}_conv_{split}{overlap_suffix}"
     Path(output_dir).mkdir(exist_ok=True, parents=True)
-    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length)
+    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length, overlap=overlap)
     
-def generate_test_dataset_for_finetune(length: int=2):
+def generate_test_dataset_for_finetune(
+    length: int=2,
+    output_root: str=None,
+    overlap: bool=False,
+):
     split = "test_with_backchannel"
     jsonl_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels/{split}"
-    output_dir = f"/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels/l{length}_conv_{split}"
+    output_root = output_root or "/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels"
+    overlap_suffix = "_overlap" if overlap else ""
+    output_dir = Path(output_root) / f"l{length}_conv_{split}{overlap_suffix}"
     Path(output_dir).mkdir(exist_ok=True, parents=True)
-    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length)
+    generate_dataset(jsonl_dir=jsonl_dir, output_dir=output_dir, length=length, overlap=overlap)
 
 if __name__ == "__main__":
-    length = 4
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output-dir",
+        default="/ctd/Works/m-wu/Datasets/zoom2025/finetune_labels",
+        help="Root directory for generated train/test datasets.",
+    )
+    parser.add_argument(
+        "--overlap",
+        action="store_true",
+        help="Use overlapping conversations (sliding-window step of 1).",
+    )
+    parser.add_argument(
+        "--length",
+        type=int,
+        default=3,
+    )
+
+    args = parser.parse_args()
+
+    length = args.length
     # generate_test_dataset_for_pretrain(length)
     # generate_train_dataset_for_pretrain(length)
-    generate_train_dataset_for_finetune(length)
-    generate_test_dataset_for_finetune(length)
+    generate_train_dataset_for_finetune(length, args.output_dir, args.overlap)
+    generate_test_dataset_for_finetune(length, args.output_dir, args.overlap)

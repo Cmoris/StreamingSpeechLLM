@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from transformers import (
     WhisperForConditionalGeneration, WhisperConfig, WhisperFeatureExtractor,
     HubertModel, HubertConfig,
-    AutoConfig, AutoModelForCTC, AutoModel, AutoProcessor,AutoFeatureExtractor
+    AutoModel, AutoProcessor, AutoFeatureExtractor
 )
 
 from types import SimpleNamespace

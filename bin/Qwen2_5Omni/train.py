@@ -66,6 +66,8 @@ class DataArguments:
 class ModelArguments:
     pretrained_model_name_or_path: str = field(default='Qwen/Qwen2.5-Omni-7B')
     freeze_modules: Optional[List[str]] = field(default=None)  
+    use_pos_emb: bool = field(default=False)
+    use_channel_emb: bool = field(default=False)
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
